@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "check-pr-test-failures@crw-qe-agent": true
+  }
+}
