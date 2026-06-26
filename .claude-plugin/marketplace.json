@@ -1,0 +1,14 @@
+{
+  "name": "crw-qe-agent",
+  "owner": {
+    "name": "Dev Spaces Team"
+  },
+  "description": "Plugin marketplace for automation tools",
+  "plugins": [
+    {
+      "name": "check-pr-test-failures",
+      "source": "./claude/plugins/check-pr-test-failures",
+      "description": "Check GitHub PR test failures, inspect Action logs and artifacts"
+    }
+  ]
+}
