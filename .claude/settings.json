@@ -1,5 +1,17 @@
 {
-  "enabledPlugins": {
-    "check-pr-test-failures@crw-qe-agent": true
-  }
+  "permissions": {
+    "allow": [
+      "Bash(gh pr checks *)",
+      "Bash(gh pr view *)",
+      "Bash(gh run view *)",
+      "Bash(gh api repos/*/actions/runs/*/artifacts *)",
+      "Bash(gh run download *)",
+      "Bash(gh repo view *)",
+      "Bash(rm -rf /tmp/pr-artifacts-*)",
+      "Read(//tmp/**)",
+      "WebFetch(domain:prow.ci.openshift.org)",
+      "WebFetch(domain:gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com)"
+    ]
+  },
+  "enabledPlugins": {}
 }

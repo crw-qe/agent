@@ -1,5 +1,0 @@
-{
-  "name": "check-pr-test-failures",
-  "description": "Check GitHub PR for test failures, drill into GitHub Action logs and artifacts for failure details",
-  "version": "1.1.0"
-}
