@@ -6,8 +6,8 @@
   "description": "Plugin marketplace for automation tools",
   "plugins": [
     {
-      "name": "che-pr-check",
-      "source": "./claude/plugins/che-pr-check",
+      "name": "check-pr-test-failures",
+      "source": "./claude/plugins/check-pr-test-failures",
       "description": "Analyze PR check failures across Eclipse Che repos (GitHub Actions + Prow/OpenShift CI)"
     }
   ]

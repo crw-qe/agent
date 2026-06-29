@@ -1,14 +1,12 @@
 ---
-name: action
-description: "Analyze GitHub Actions check failures on a PR. Lists all checks, classifies them, fetches GHA logs, extracts errors, and produces a failure report. For Prow/OpenShift CI failures, use /che-pr-check:openshift-ci instead."
-whenToUse: "When the user wants to investigate GitHub Actions test failures on a pull request, check PR CI status, find why GHA tests failed, or analyze GitHub Action run logs and artifacts in Eclipse Che repos"
+name: analyze
+description: "Analyze all CI check failures on a PR — GitHub Actions and Prow/OpenShift CI. Lists checks, fetches logs, extracts errors, and produces a unified failure report."
+whenToUse: "When the user wants to investigate test failures on a pull request, check PR CI status, find why CI tests failed, analyze GitHub Actions or Prow/OpenShift CI run logs and artifacts in Eclipse Che repos"
 ---
 
-# Analyze GitHub Actions Failures
+# Analyze PR Check Failures
 
-Investigate GitHub Actions check failures on a GitHub pull request. Produce a concise, actionable report.
-
-For Prow/OpenShift CI failures, tell the user to use `/che-pr-check:openshift-ci` instead.
+Investigate all CI check failures on a GitHub pull request — both GitHub Actions and Prow/OpenShift CI. Produce a concise, actionable report.
 
 **This skill is strictly READ-ONLY.** See the constraints section at the end.
 
@@ -64,7 +62,9 @@ Unmatched checks → **Other**.
 - URL contains `prow.ci.openshift.org` or name starts with `ci/prow/` → **Prow**
 - Everything else → **External**
 
-## Step 5: Investigate GitHub Actions failures
+## Step 5: Investigate failed checks
+
+### 5a. GitHub Actions failures
 
 For each failed check where CI = **GHA**:
 
@@ -101,6 +101,51 @@ For each failed check where CI = **GHA**:
    - **WHY** it failed — the error message or root cause.
    - **WHERE** — the file, module, or test class involved.
 
+### 5b. Prow / OpenShift CI failures
+
+For each failed check where CI = **Prow**:
+
+1. Get the check URL from the `gh pr checks` output. It typically points to:
+   `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/...`
+
+2. Fetch Prow build logs using WebFetch:
+
+   ```
+   WebFetch on the Prow URL with prompt:
+   "Extract all test failure details from this Prow build log page. Look for:
+   - Lines containing FAIL, ERROR, FAILED
+   - Go test failures: '--- FAIL: TestName'
+   - Pod/container failures: OOMKilled, CrashLoopBackOff, ImagePullBackOff
+   - Timeout errors: 'context deadline exceeded', 'timed out'
+   - Step failures: 'STEP FAILED'
+   - Infrastructure errors: 'error: pods not found', 'unable to connect'
+   Return the specific test names, error messages, and any file/module references."
+   ```
+
+3. If WebFetch fails (auth required, redirect, timeout, empty response):
+   - Note: "Prow logs could not be fetched automatically."
+   - Provide the direct Prow URL for the user to inspect manually.
+
+4. If WebFetch succeeded, look for Prow-specific failure patterns:
+   - **Go test failures:** `--- FAIL: TestName` followed by assertion/error messages
+   - **Pod crashes:** `OOMKilled`, `CrashLoopBackOff`, `Error` in pod status
+   - **Image issues:** `ImagePullBackOff`, `ErrImagePull`, failed to pull image
+   - **Timeouts:** `context deadline exceeded`, `timed out waiting for`, `deadline exceeded`
+   - **Infrastructure:** `error: pods "..." not found`, `unable to connect to the server`
+   - **Step failures:** `STEP FAILED:`, `exit code N`
+   - **Namespace issues:** `namespace "..." not found`, `forbidden`
+
+   Extract: (1) specific failing test or step names, (2) error messages, (3) pod/container/namespace involved.
+
+5. Produce a 2-3 sentence explanation covering:
+   - **WHAT** failed — the specific test name, step, or pod.
+   - **WHY** it failed — the error message, timeout, OOM, or root cause.
+   - **WHERE** — the namespace, pod, container, or test file involved.
+
+   Distinguish between:
+   - **Test failures** — actual test assertions failed (likely PR-related)
+   - **Infrastructure failures** — cluster issues, image pull errors, timeouts (likely flaky/infra)
+
 ## Step 6: Output the report
 
 Use exactly this format:
@@ -118,7 +163,7 @@ Use exactly this format:
 
 ---
 
-### FAILED check-name
+### FAILED check-name (GHA)
 
 EXPLANATION -- 2-3 sentences.
 
@@ -127,20 +172,31 @@ Rerun: [Re-run failed jobs](https://github.com/OWNER/REPO/actions/runs/RUN_ID)
 
 ---
 
-(repeat for each failed GHA check)
+### FAILED ci/prow/v19-job-name (Prow)
+
+EXPLANATION -- 2-3 sentences describing what failed, why, and whether it looks like a test failure or infrastructure issue.
+
+Log: [ci/prow/v19-job-name](PROW_URL)
+Rerun: Post `/test v19-job-name` as a PR comment
+  Or rerun all failed Prow jobs: `/retest`
+
+---
+
+(repeat for each failed check)
 ```
 
 ### Output rules
 
 - The table lists ALL checks (passed, failed, pending) with category, duration, and CI system.
-- Below the table, add one section per failed **GHA** check with: explanation, log link, and rerun link.
-- If there are failed **Prow** checks, add a note at the end: "N Prow check(s) also failed. Use `/che-pr-check:openshift-ci PR_URL` to investigate."
-- If no GHA checks failed, show only the table. If there are Prow failures, mention the prow skill. Otherwise say "All checks passed."
+- Below the table, add one section per failed **GHA** and **Prow** check with: explanation, log link, and rerun instructions.
+- For GHA failures, the rerun link points to the Actions run page.
+- For Prow failures, the rerun instruction shows the `/test JOB_NAME` command (job name = check name without `ci/prow/` prefix) and the `/retest` shortcut.
 - Skip External checks in the investigation (show in table only).
+- If no checks failed, show only the table and say "All checks passed."
 
 ## READ-ONLY constraints
 
 **This skill MUST NEVER perform any write or state-modifying operation.**
 
 - NEVER run `gh run rerun`, `gh api` with POST/PUT/PATCH/DELETE, `gh pr comment`, `git commit`, `git push`, `gh pr merge`, `gh pr close`
-- Only use: `gh pr checks`, `gh pr view`, `gh run view`, `gh api GET`, `gh run download` (+ cleanup)
+- Only use: `gh pr checks`, `gh pr view`, `gh run view`, `gh api GET`, `gh run download` (+ cleanup), `WebFetch`, `curl -s` (GET only)
