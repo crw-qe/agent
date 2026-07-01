@@ -108,36 +108,55 @@ For each failed check where CI = **Prow**:
 1. Get the check URL from the `gh pr checks` output. It typically points to:
    `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/...`
 
-2. Fetch Prow build logs using WebFetch:
-
+2. **Extract the GCS path** from the Prow URL. The URL format is:
    ```
-   WebFetch on the Prow URL with prompt:
-   "Extract all test failure details from this Prow build log page. Look for:
-   - Lines containing FAIL, ERROR, FAILED
-   - Go test failures: '--- FAIL: TestName'
-   - Pod/container failures: OOMKilled, CrashLoopBackOff, ImagePullBackOff
-   - Timeout errors: 'context deadline exceeded', 'timed out'
-   - Step failures: 'STEP FAILED'
-   - Infrastructure errors: 'error: pods not found', 'unable to connect'
-   Return the specific test names, error messages, and any file/module references."
+   https://prow.ci.openshift.org/view/gs/{GCS_PATH}
    ```
+   Strip the `https://prow.ci.openshift.org/view/gs/` prefix to get the GCS_PATH.
+   Example: for URL `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/eclipse-che_che-dashboard/1492/pull-ci-eclipse-che-che-dashboard-main-v19-happy-path/123456`,
+   the GCS_PATH is `test-platform-results/pr-logs/pull/eclipse-che_che-dashboard/1492/pull-ci-eclipse-che-che-dashboard-main-v19-happy-path/123456`.
 
-3. If WebFetch fails (auth required, redirect, timeout, empty response):
+3. **Fetch the raw build log** directly from Google Cloud Storage:
+   ```bash
+   curl -sL "https://storage.googleapis.com/${GCS_PATH}/build-log.txt" 2>&1 | tail -300
+   ```
+   This bypasses the Prow JavaScript SPA and returns the actual log content.
+
+4. **Fetch the JUnit XML** for structured test results (may not exist for all jobs):
+   ```bash
+   curl -sL "https://storage.googleapis.com/${GCS_PATH}/artifacts/junit_operator.xml" 2>&1 | head -500
+   ```
+   Parse the XML to find `<testcase>` elements with `<failure>` children. Extract:
+   - Step/test name from the `name` attribute
+   - Error details from the `<failure>` element content
+
+5. **Fetch job result metadata** for overall status:
+   ```bash
+   curl -sL "https://storage.googleapis.com/${GCS_PATH}/finished.json" 2>&1
+   ```
+   The JSON contains `"result"` ("SUCCESS" or "FAILURE") and `"timestamp"`.
+
+6. If all three fetches fail (e.g. GCS bucket is not public, network error):
    - Note: "Prow logs could not be fetched automatically."
    - Provide the direct Prow URL for the user to inspect manually.
 
-4. If WebFetch succeeded, look for Prow-specific failure patterns:
+7. Analyze the fetched content. Look for Prow-specific failure patterns in the build log:
    - **Go test failures:** `--- FAIL: TestName` followed by assertion/error messages
    - **Pod crashes:** `OOMKilled`, `CrashLoopBackOff`, `Error` in pod status
    - **Image issues:** `ImagePullBackOff`, `ErrImagePull`, failed to pull image
    - **Timeouts:** `context deadline exceeded`, `timed out waiting for`, `deadline exceeded`
    - **Infrastructure:** `error: pods "..." not found`, `unable to connect to the server`
-   - **Step failures:** `STEP FAILED:`, `exit code N`
+   - **Step failures:** `step ... failed`, `exit code N`
+   - **Install failures:** `level=fatal`, `Installer exit with code`
+   - **Scheduling:** `Pod scheduling timeout`, `could not be scheduled`
    - **Namespace issues:** `namespace "..." not found`, `forbidden`
+   - **Resource leaks:** `leaked resources`, `leaked ARNs`, `leaked DNS`
+
+   Cross-reference with JUnit XML: test cases with `<failure>` elements give precise step names and error messages.
 
    Extract: (1) specific failing test or step names, (2) error messages, (3) pod/container/namespace involved.
 
-5. Produce a 2-3 sentence explanation covering:
+8. Produce a 2-3 sentence explanation covering:
    - **WHAT** failed — the specific test name, step, or pod.
    - **WHY** it failed — the error message, timeout, OOM, or root cause.
    - **WHERE** — the namespace, pod, container, or test file involved.

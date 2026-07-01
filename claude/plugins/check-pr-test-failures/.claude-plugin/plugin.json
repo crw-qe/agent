@@ -1,5 +1,5 @@
 {
   "name": "check-pr-test-failures",
   "description": "Analyze PR check failures across Eclipse Che repos (GitHub Actions + Prow/OpenShift CI). Read-only.",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
